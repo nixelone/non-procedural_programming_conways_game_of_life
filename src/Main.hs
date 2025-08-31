@@ -13,6 +13,8 @@ data World = World
   , aliveColor        :: Color
   , deadColor         :: Color
   , wrapAround        :: Bool
+  , mouseDown         :: Bool
+  , drawState         :: Maybe Bool
   }
 
 -- Grid dimensions
@@ -31,7 +33,7 @@ padding = 40  -- space around grid for text and nicer look
 -- Window dimensions
 windowWidth, windowHeight :: Int
 windowWidth  = round (fromIntegral numCols * cellSize + 1 * padding)
-windowHeight = round (fromIntegral numRows * cellSize + 2 * padding)
+windowHeight = round (fromIntegral numRows * cellSize + 4 * padding)
 
 -- Empty grid
 emptyGrid :: Int -> Int -> [[Bool]]
@@ -61,6 +63,8 @@ initialWorld = World
   , aliveColor        = white
   , deadColor         = black
   , wrapAround        = False
+  , mouseDown         = False
+  , drawState         = Nothing
   }
 
 -- Render world
@@ -71,10 +75,24 @@ render w@World{..} = Pictures $
       scale 0.15 0.15 $
       color black $
       text (if running then "Running" else "Paused")
-  , translate (fromIntegral windowWidth/2 - 100) (fromIntegral windowHeight/2 - 30) $
-      scale 0.12 0.12 $
+  , translate (fromIntegral windowWidth/2 - 200) (fromIntegral windowHeight/2 - 30) $
+      scale 0.15 0.15 $
       color black $
-      text ("Wrap: " ++ if wrapAround then "On" else "Off")
+      text ("Grid wrapping: " ++ if wrapAround then "On" else "Off")
+  , translate (-fromIntegral windowWidth/2 + 20) (-fromIntegral windowHeight/2 + 90) $
+      scale 0.12 0.12 $ color black $ text "Controls:"
+  , translate (-fromIntegral windowWidth/2 + 40) (-fromIntegral windowHeight/2 + 70) $
+      scale 0.10 0.10 $ color black $ text "Space - Start/Pause"
+  , translate (-fromIntegral windowWidth/2 + 40) (-fromIntegral windowHeight/2 + 50) $
+      scale 0.10 0.10 $ color black $ text "Right Arrow - Step once"
+  , translate (-fromIntegral windowWidth/2 + 40) (-fromIntegral windowHeight/2 + 30) $
+      scale 0.10 0.10 $ color black $ text "Up/Down Arrows - Speed +/-"
+  , translate (0) (-fromIntegral windowHeight/2 + 70) $
+      scale 0.10 0.10 $ color black $ text "Left Click + Drag - Draw/Erase cells"
+  , translate (0) (-fromIntegral windowHeight/2 + 50) $
+      scale 0.10 0.10 $ color black $ text "R - Random colors, D - Reset colors"
+  , translate (0) (-fromIntegral windowHeight/2 + 30) $
+      scale 0.10 0.10 $ color black $ text "W - Toggle wraparound"
   ]
 
 -- Draw grid
@@ -87,8 +105,8 @@ drawGrid w@World{..} =
   , let y = fromIntegral (negate r) * cellSize + halfHeight
   ]
   where
-    halfWidth  = fromIntegral (numCols - 1) * cellSize / 2
-    halfHeight = fromIntegral (numRows - 1) * cellSize / 2
+    halfWidth  = fromIntegral (numCols - 1) * cellSize / 2   -- -1 for padding
+    halfHeight = fromIntegral (numRows + 3) * cellSize / 2   -- +3 for padding
 
 cellColor :: World -> Bool -> Color
 cellColor World{..} True  = aliveColor
@@ -96,13 +114,34 @@ cellColor World{..} False = deadColor
 
 -- Handle input
 handleInput :: Event -> World -> World
+
+-- Mouse down: decide whether we are drawing or erasing
 handleInput (EventKey (MouseButton LeftButton) Down _ (x, y)) w@World{..} =
-  let col = floor ((x + fromIntegral windowWidth  / 2) / cellSize) - 1
-      row = numRows + 1 - floor ((y + fromIntegral windowHeight / 2) / cellSize)
-  in if row >= 0 && row < numRows && col >= 0 && col < numCols
-       then w { grid = toggleCell row col grid }
+  let (row, col) = mouseToCell x y
+  in if inBounds row col
+       then let current = grid !! row !! col
+                newState = not current  -- toggle logic → if alive then we erase, else draw
+            in w { grid = setCell row col newState grid
+                 , mouseDown = True
+                 , drawState = Just newState }
        else w
 
+-- Mouse up: stop drawing
+handleInput (EventKey (MouseButton LeftButton) Up _ _) w =
+  w { mouseDown = False, drawState = Nothing }
+
+-- Mouse drag: paint cells while mouse is down
+handleInput (EventMotion (x, y)) w@World{..}
+  | mouseDown =
+      let (row, col) = mouseToCell x y
+      in if inBounds row col
+           then case drawState of
+                  Just val -> w { grid = setCell row col val grid }
+                  Nothing  -> w
+           else w
+  | otherwise = w
+
+-- Toggle running
 handleInput (EventKey (SpecialKey KeySpace) Down _ _) w =
   w { running = not (running w) }
 
@@ -135,9 +174,21 @@ handleInput (EventKey (Char 'w') Down _ _) w =
 
 handleInput _ w = w
 
-toggleCell :: Int -> Int -> [[Bool]] -> [[Bool]]
-toggleCell row col grid =
-  [ [ if r == row && c == col then not cell else cell
+-- Convert mouse coordinates to row/col
+mouseToCell :: Float -> Float -> (Int, Int)
+mouseToCell x y =
+  let col = floor ((x + fromIntegral windowWidth  / 2) / cellSize) - 1
+      row = numRows + 5 - floor ((y + fromIntegral windowHeight / 2) / cellSize)
+  in (row, col)
+
+-- Bounds check
+inBounds :: Int -> Int -> Bool
+inBounds row col = row >= 0 && row < numRows && col >= 0 && col < numCols
+
+-- Set cell to a specific value (not toggle)
+setCell :: Int -> Int -> Bool -> [[Bool]] -> [[Bool]]
+setCell row col val grid =
+  [ [ if r == row && c == col then val else cell
     | (c, cell) <- zip [0..] rowVals ]
   | (r, rowVals) <- zip [0..] grid ]
 
