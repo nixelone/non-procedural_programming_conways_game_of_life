@@ -197,15 +197,17 @@ The code is designed for easy modification:
 
 ### Building and Running
 
+This project is set up as a Stack project. To run the game:
+
+1. Clone the repository from GitHub
+2. Navigate to the project directory
+3. Run the game:
+
 ```bash
-ghc -O2 GameOfLife.hs
-./GameOfLife
+stack run
 ```
 
-Or with cabal/stack:
-```bash
-stack exec ghc -- -O2 GameOfLife.hs
-```
+Stack will automatically handle building the project and managing dependencies.
 
 ### Code Style Notes
 
