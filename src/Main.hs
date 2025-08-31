@@ -1,24 +1,46 @@
+{-# LANGUAGE RecordWildCards #-}
 import Graphics.Gloss
+import Graphics.Gloss.Interface.IO.Game (Event(..), Key(..), SpecialKey(..), KeyState(..), Modifiers(..))
 
 -- Represent the world
 data World = World
-  { grid     :: [[Bool]]
-  , cellSize :: Float
+  { grid              :: [[Bool]]
+  , running           :: Bool
+  , tickInterval      :: Float
+  , timeSinceLastTick :: Float
+  , cellSize          :: Float
   }
 
--- Example grid: a vertical blinker
+-- Example grid: a blinker
+initialGrid :: [[Bool]]
+initialGrid =
+  [ [False, True,  False]
+  , [False, True,  False]
+  , [False, True,  False]
+  ]
+
 initialWorld :: World
 initialWorld = World
-  { grid = [ [False, True,  False]
-           , [False, True,  True]
-           , [False, True,  False]
-           ]
-  , cellSize = 50
+  { grid              = initialGrid
+  , running           = False
+  , tickInterval      = 0.5
+  , timeSinceLastTick = 0
+  , cellSize          = 40
   }
 
--- Convert World -> Picture
+-- Render world as picture
 render :: World -> Picture
-render (World g size) = Pictures $
+render World{..} = Pictures $
+  drawGrid grid cellSize ++
+  [ translate (-280) 260 $
+      scale 0.15 0.15 $
+      color white $
+      text (if running then "Running" else "Paused")
+  ]
+
+-- Draws the grid of cells
+drawGrid :: [[Bool]] -> Float -> [Picture]
+drawGrid g size =
   [ translate x y (color (cellColor alive) (rectangleSolid size size))
   | (row, j) <- zip g [0..]
   , (alive, i) <- zip row [0..]
@@ -28,16 +50,33 @@ render (World g size) = Pictures $
   where
     rows = length g
     cols = length (head g)
-    halfWidth  = fromIntegral (cols - 1) * size / 2
-    halfHeight = fromIntegral (rows -1) * size / 2
+    halfWidth  = fromIntegral cols * size / 2
+    halfHeight = fromIntegral rows * size / 2
 
 cellColor :: Bool -> Color
 cellColor True  = white
-cellColor False = black
+cellColor False = greyN 0.3  -- lighter background for clarity
 
--- Main just displays the initial world
+-- Handle keyboard/mouse input
+handleInput :: Event -> World -> World
+handleInput (EventKey (SpecialKey KeySpace) Down _ _) w =
+  w { running = not (running w) }  -- toggle pause
+handleInput _ w = w
+
+-- Update world every frame
+update :: Float -> World -> World
+update dt w
+  | running w =
+      w { timeSinceLastTick = timeSinceLastTick w + dt }
+  | otherwise = w
+
+-- Main entry point
 main :: IO ()
-main = display
-         (InWindow "Game of Life" (400, 200) (300, 300))
-         (greyN 0.8)
-         (render initialWorld)
+main = play
+         (InWindow "Game of Life" (600, 600) (100, 100))  -- display
+         black                                           -- background color
+         60                                              -- steps per second
+         initialWorld                                    -- initial world
+         render                                          -- render function
+         handleInput                                     -- input handler
+         update                                          -- update function
