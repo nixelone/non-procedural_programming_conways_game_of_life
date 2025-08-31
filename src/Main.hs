@@ -3,9 +3,22 @@ import Graphics.Gloss
 import Graphics.Gloss.Interface.Pure.Game
 import System.Random
 
+-- Conway's Game of Life in Haskell using Gloss.
+-- 
+-- Features:
+-- * Interactive drawing with mouse (click + drag to add/remove cells).
+-- * Start/stop simulation with Space.
+-- * Step through manually with Right arrow.
+-- * Adjust speed with Up/Down arrows.
+-- * Toggle wraparound edges with W.
+-- * Randomize/reset colors with R / D.
+--
+-- Grid: 30x30, cell size 20px.
+-- Background: light gray with helpful legend.
+
 -- Represent the world
 data World = World
-  { grid              :: [[Bool]]
+  { grid              :: Grid
   , running           :: Bool
   , tickInterval      :: Float
   , timeSinceLastTick :: Float
@@ -16,6 +29,9 @@ data World = World
   , mouseDown         :: Bool
   , drawState         :: Maybe Bool
   }
+
+-- Type alias for readability
+type Grid = [[Bool]]
 
 -- Grid dimensions
 numRows, numCols :: Int
@@ -36,18 +52,18 @@ windowWidth  = round (fromIntegral numCols * cellSize + 1 * padding)
 windowHeight = round (fromIntegral numRows * cellSize + 4 * padding)
 
 -- Empty grid
-emptyGrid :: Int -> Int -> [[Bool]]
+emptyGrid :: Int -> Int -> Grid
 emptyGrid rows cols = replicate rows (replicate cols False)
 
 -- Example grid: blinker in the middle
-initialGrid :: [[Bool]]
+initialGrid :: Grid
 initialGrid =
   let rows = numRows
       cols = numCols
       base = emptyGrid rows cols
       midR = rows `div` 2
       midC = cols `div` 2
-  in [ [ if (r, c) `elem` [(midR-1, midC), (midR, midC), (midR+1, midC+1)]
+  in [ [ if (r, c) `elem` [(midR-1, midC), (midR, midC), (midR+1, midC)]
           then True else base !! r !! c
        | c <- [0..cols-1] ]
      | r <- [0..rows-1] ]
@@ -174,7 +190,9 @@ handleInput (EventKey (Char 'w') Down _ _) w =
 
 handleInput _ w = w
 
--- Convert mouse coordinates to row/col
+-- Convert mouse (x,y) to grid cell indices.
+-- Note: we shift by +5 rows because the grid is drawn with extra vertical padding
+--       to leave room for the legend and UI text.
 mouseToCell :: Float -> Float -> (Int, Int)
 mouseToCell x y =
   let col = floor ((x + fromIntegral windowWidth  / 2) / cellSize) - 1
@@ -186,7 +204,7 @@ inBounds :: Int -> Int -> Bool
 inBounds row col = row >= 0 && row < numRows && col >= 0 && col < numCols
 
 -- Set cell to a specific value (not toggle)
-setCell :: Int -> Int -> Bool -> [[Bool]] -> [[Bool]]
+setCell :: Int -> Int -> Bool -> Grid -> Grid
 setCell row col val grid =
   [ [ if r == row && c == col then val else cell
     | (c, cell) <- zip [0..] rowVals ]
@@ -201,7 +219,7 @@ update dt w
   -- | otherwise = w
 
 -- Compute next generation
-nextGeneration :: Bool -> [[Bool]] -> [[Bool]]
+nextGeneration :: Bool -> Grid -> Grid
 nextGeneration wrap g =
   [ [ applyRules (g !! r !! c) (liveNeighbors r c)
     | c <- [0..cols-1] ]
@@ -237,7 +255,7 @@ randomColor gen =
 main :: IO ()
 main = play
   (InWindow "Game of Life" (windowWidth, windowHeight) (300, 100))
-  (light (greyN 0.7))
+  (light (greyN 0.75))
   60
   initialWorld
   render
